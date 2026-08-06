@@ -92,7 +92,7 @@ class PartnersIndex extends Component
             ->unique('id')
             ->values();
 
-        $balances = $partners->mapWithKeys(fn (User $u) => [$u->id => $ledger->balanceFor($u->id)]);
+        $balances = $ledger->balancesFor($partners->pluck('id')->map(fn ($id) => (int) $id)->all());
 
         return view('livewire.money.partners-index', [
             'partners' => $partners,

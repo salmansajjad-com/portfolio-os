@@ -427,7 +427,7 @@ class Show extends Component
         $this->authorize('update', $this->project);
 
         $this->validate([
-            'upload' => ['required', 'file', 'max:10240'],
+            'upload' => ['required', 'file', 'max:10240', 'mimes:pdf,png,jpg,jpeg,gif,webp,txt,csv,doc,docx,xls,xlsx,zip'],
         ]);
 
         $path = $this->upload->store('project-files/'.$this->project->id, 'local');

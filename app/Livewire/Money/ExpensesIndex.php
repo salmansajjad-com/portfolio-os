@@ -130,7 +130,7 @@ class ExpensesIndex extends Component
             'expense_date' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'is_paid' => ['boolean'],
-            'receipt' => ['nullable', 'file', 'max:5120'],
+            'receipt' => ['nullable', 'file', 'max:5120', 'mimes:pdf,png,jpg,jpeg,gif,webp'],
         ]);
 
         $data = [

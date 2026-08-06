@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\DistributionStatus;
+use App\Exceptions\LockedDistributionException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -48,6 +49,38 @@ class DistributionRun extends Model
             'approved_at' => 'datetime',
             'voided_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // A locked run is the record of what was actually paid, so it must not
+        // drift afterwards. The service guards the normal path, but any stray
+        // update(), bulk edit or console tweak has to fail too. Voiding is the
+        // one permitted transition, and it only writes its own bookkeeping.
+        static::updating(function (self $run): void {
+            $wasLocked = in_array($run->getRawOriginal('status'), [
+                DistributionStatus::Approved->value,
+                DistributionStatus::Voided->value,
+            ], true);
+
+            if (! $wasLocked) {
+                return;
+            }
+
+            $permitted = ['status', 'voided_by', 'voided_at', 'void_reason', 'updated_at', 'deleted_at'];
+            $blocked = array_diff(array_keys($run->getDirty()), $permitted);
+
+            if ($blocked !== []) {
+                throw new LockedDistributionException(
+                    'Distribution run #'.$run->id.' is '.$run->getRawOriginal('status')
+                    .' and cannot be changed ('.implode(', ', $blocked).'). Void it and create a new run instead.'
+                );
+            }
+        });
+
+        static::forceDeleting(function (self $run): void {
+            throw new LockedDistributionException('Distribution runs are financial records and are never hard-deleted.');
+        });
     }
 
     public function lines(): HasMany

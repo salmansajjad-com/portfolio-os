@@ -3,6 +3,7 @@
 namespace App\Livewire\Auth;
 
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -20,6 +21,21 @@ class ForgotPassword extends Component
         $this->validate([
             'email' => ['required', 'email'],
         ]);
+
+        // Laravel throttles per email address, which does nothing to stop one
+        // caller walking a list of addresses to flood inboxes or confirm which
+        // ones exist. Throttle the caller as well, as login already does.
+        $key = 'password-reset:'.request()->ip();
+
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            $this->addError('email', __('Too many reset requests. Try again in :seconds seconds.', [
+                'seconds' => RateLimiter::availableIn($key),
+            ]));
+
+            return;
+        }
+
+        RateLimiter::hit($key, 300);
 
         $status = Password::sendResetLink(['email' => $this->email]);
 

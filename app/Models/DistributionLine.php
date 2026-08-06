@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Exceptions\LockedDistributionException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -33,6 +34,22 @@ class DistributionLine extends Model
             'holdback_paisa' => 'integer',
             'credited_paisa' => 'integer',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // Lines are the arithmetic behind a payout, so they follow the run: once
+        // it is approved or voided they can no longer be edited or removed.
+        $guard = function (self $line): void {
+            if ($line->run?->isLocked()) {
+                throw new LockedDistributionException(
+                    'Distribution run #'.$line->distribution_run_id.' is locked, so its lines cannot be changed.'
+                );
+            }
+        };
+
+        static::updating($guard);
+        static::deleting($guard);
     }
 
     public function run(): BelongsTo

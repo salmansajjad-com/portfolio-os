@@ -140,7 +140,7 @@ class Show extends Component
         $this->authorize('update', $this->task);
 
         $this->validate([
-            'evidence' => ['required', 'file', 'max:10240'],
+            'evidence' => ['required', 'file', 'max:10240', 'mimes:pdf,png,jpg,jpeg,gif,webp,txt,csv,doc,docx,xls,xlsx,zip'],
         ]);
 
         $path = $this->evidence->store('task-evidence/'.$this->task->id, 'local');
