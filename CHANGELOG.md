@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Revealed credentials no longer reach the browser in Livewire state.** A reveal
+  put the decrypted username and secret into a public component property, which
+  Livewire serialises into `wire:snapshot` and posts back on every subsequent
+  request — leaving the secret readable in the page source long after the reveal.
+  Revealed values now live in the server-side session, reach the view without
+  entering component state, and re-mask on the next page load.
+- The `/_ops/{action}` route can no longer rewrite Blade layouts, refuses to run
+  when the configured token is shorter than 32 characters, and accepts the token as
+  an `Authorization: Bearer` header so it stays out of access logs and history.
+- Editing a task no longer changes its assignee unless the actor holds
+  `tasks.assign`. The form hid the field; hiding a field is not authorisation.
+- CSV exports escape values a spreadsheet would otherwise execute as a formula.
+- Partner payout details are encrypted at rest, with a migration for existing rows.
+- Finance edit and delete resolve records through the caller's project scope.
+- Password reset requests are rate-limited per IP, and uploads validate type as well
+  as size.
+- The Settings two-factor toggle no longer implies a protection that does not exist.
+  There is no enrollment step and no login challenge; the UI and docs say so.
+
+### Fixed
+
+- **Distribution runs could pay the wrong amount.** Shares were rounded per owner, so
+  a split could create or destroy minor units — two 50% owners of one unit were each
+  paid one. Shares are now allocated by largest remainder and always sum to the
+  profit.
+- Approval now rebuilds figures and lines under a row lock rather than crediting
+  whatever the draft captured, so revenue arriving after a draft was raised is paid
+  and the frozen ownership snapshot matches the lines it describes.
+- Concurrent approvals can no longer credit twice, and two drafts for the same month
+  can no longer both be approved.
+- A project with profit but no ownership split is rejected instead of being silently
+  skipped, which previously left its profit in the run totals but credited to nobody.
+- Approved runs and their lines are immutable at the model layer, and financial
+  records refuse to hard-delete.
+- Duplicate auto-generated expenses are prevented by database constraints rather than
+  a PHP check that two concurrent requests could both pass.
+
+### Performance
+
+- The portfolio list rendered twelve projects in 362 queries and the dashboard in
+  148, because each row asked for its own revenue, cost, profit and open task count
+  and the cost lookup ran the full P&L pipeline. Both now batch: **12 and 24**, flat
+  as projects are added, with a test holding the budget.
+- Permission and role lookups are memoized per request.
+- `Model::preventLazyLoading()` is enabled outside production.
+- Partner balances resolve in one query, and reporting filters have indexes.
+
 ### Changed
 
 - Base currency, its minor-unit exponent and its display symbol are now driven by
