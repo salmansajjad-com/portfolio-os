@@ -14,6 +14,7 @@ use App\Policies\LinkPolicy;
 use App\Policies\ProjectPolicy;
 use App\Policies\TaskPolicy;
 use App\Policies\TaskTemplatePolicy;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
@@ -31,6 +32,11 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->environment('production')) {
             URL::forceScheme('https');
         }
+
+        // Lazy loading is how list screens quietly grow a query per row. Fail
+        // loudly in development instead of shipping it, but never break a live
+        // page over it.
+        Model::preventLazyLoading(! $this->app->isProduction());
 
         Gate::policy(Project::class, ProjectPolicy::class);
         Gate::policy(Credential::class, CredentialPolicy::class);

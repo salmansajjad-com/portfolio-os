@@ -5,6 +5,7 @@ namespace App\Livewire\Projects;
 use App\Enums\ProjectStatus;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\ProjectMonthStatsService;
 use App\Services\ProjectOwnershipService;
 use App\Services\SetupChecklistService;
 use App\Support\Money;
@@ -284,6 +285,9 @@ class Index extends Component
             'statusOptions' => ProjectStatus::options(),
             'users' => User::query()->where('is_active', true)->orderBy('name')->get(),
             'canManageOwnership' => Auth::user()->hasPermission('projects.manage_ownership'),
+            // Batched here so the table can read figures instead of querying per row.
+            'monthStats' => app(ProjectMonthStatsService::class)
+                ->forProjects($projects->pluck('id')->all()),
         ]);
     }
 }

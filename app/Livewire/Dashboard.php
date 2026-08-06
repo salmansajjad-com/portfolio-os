@@ -12,6 +12,7 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\PeopleVisibilityService;
+use App\Services\ProjectMonthStatsService;
 use App\Support\AppSettings;
 use App\Support\DisplayTimezone;
 use Illuminate\Support\Facades\Auth;
@@ -160,6 +161,20 @@ class Dashboard extends Component
             }
         }
 
+        // One batched pass for the whole portfolio. Summing per project used to
+        // drag the full P&L pipeline through a loop on the landing page.
+        $monthTotals = ['revenue_paisa' => 0, 'cost_paisa' => 0];
+
+        if ($canViewProjects) {
+            $stats = app(ProjectMonthStatsService::class)
+                ->forProjects((clone $projectsQuery)->pluck('id')->map(fn ($id) => (int) $id)->all());
+
+            $monthTotals = [
+                'revenue_paisa' => (int) $stats->sum('revenue_paisa'),
+                'cost_paisa' => (int) $stats->sum('cost_paisa'),
+            ];
+        }
+
         return view('livewire.dashboard', [
             'totalProjects' => $totalProjects,
             'byStatus' => $byStatus,
@@ -167,12 +182,15 @@ class Dashboard extends Component
             'expiring' => $expiring,
             'thresholds' => $thresholds,
             'recentProjects' => $recentProjects,
-            'monthRevenuePlaceholder' => $canViewProjects
-                ? (int) (clone $projectsQuery)->get()->sum(fn ($p) => $p->monthRevenuePaisa())
-                : 0,
-            'monthCostPlaceholder' => $canViewProjects
-                ? (int) (clone $projectsQuery)->get()->sum(fn ($p) => $p->monthCostPaisa())
-                : 0,
+            'recentOpenTasks' => Task::query()
+                ->whereIn('project_id', $recentProjects->pluck('id'))
+                ->open()
+                ->where(fn ($q) => $q->where('is_recurrence_source', false)->orWhereNull('is_recurrence_source'))
+                ->groupBy('project_id')
+                ->selectRaw('project_id, COUNT(*) as total')
+                ->pluck('total', 'project_id'),
+            'monthRevenuePlaceholder' => $monthTotals['revenue_paisa'],
+            'monthCostPlaceholder' => $monthTotals['cost_paisa'],
             'canViewProjects' => $canViewProjects,
             'canViewCredentials' => (bool) $user?->hasPermission('credentials.view'),
             'myTasksDueToday' => $myTasksDueToday,

@@ -43,16 +43,16 @@
     </x-page-header>
 
     <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <x-stat label="Revenue this month" :value="\App\Support\Money::rounded($project->monthRevenuePaisa())" :hint="\App\Support\Currency::code()" icon="revenue" tone="accent" />
-        <x-stat label="Cost this month" :value="\App\Support\Money::rounded($project->monthCostPaisa())" :hint="\App\Support\Currency::code()" icon="expenses" />
+        <x-stat label="Revenue this month" :value="\App\Support\Money::rounded($monthStats['revenue_paisa'])" :hint="\App\Support\Currency::code()" icon="revenue" tone="accent" />
+        <x-stat label="Cost this month" :value="\App\Support\Money::rounded($monthStats['cost_paisa'])" :hint="\App\Support\Currency::code()" icon="expenses" />
         <x-stat
             label="Profit this month"
-            :value="\App\Support\Money::rounded($project->monthProfitPaisa())"
+            :value="\App\Support\Money::rounded($monthStats['profit_paisa'])"
             :hint="\App\Support\Currency::code()"
             icon="pnl"
-            :tone="$project->monthProfitPaisa() >= 0 ? 'success' : 'danger'"
+            :tone="$monthStats['profit_paisa'] >= 0 ? 'success' : 'danger'"
         />
-        <x-stat label="Open tasks" :value="$project->openTasksCount()" icon="tasks" hint="not yet approved" />
+        <x-stat label="Open tasks" :value="$monthStats['open_tasks']" icon="tasks" hint="not yet approved" />
     </div>
 
     {{-- Details --}}

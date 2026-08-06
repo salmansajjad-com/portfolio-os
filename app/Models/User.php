@@ -21,6 +21,20 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
+    /**
+     * Per-instance caches for the authorisation lookups the layout repeats on
+     * every request. Not persisted, and cleared by forgetPermissionCache().
+     *
+     * @var Collection<int, string>|null
+     */
+    protected ?Collection $memoizedPermissionNames = null;
+
+    /** @var Collection<int, string>|null */
+    protected ?Collection $memoizedRoleNames = null;
+
+    /** @var array<int, int>|null */
+    protected ?array $memoizedAccessibleProjectIds = null;
+
     protected function casts(): array
     {
         return [
@@ -104,15 +118,30 @@ class User extends Authenticatable
 
     /**
      * Effective permissions = union of all assigned role permissions.
+     *
+     * Memoized for the life of the instance. The navigation alone asks about
+     * twenty permissions, and the layout builds the sidebar, the mobile bar and
+     * the command palette from it, so an uncached lookup meant dozens of
+     * identical role queries before any page did its own work.
      */
     public function permissionNames(): Collection
     {
-        return $this->roles()
+        return $this->memoizedPermissionNames ??= $this->roles()
             ->with('permissions')
             ->get()
             ->flatMap(fn (Role $role) => $role->permissions->pluck('name'))
             ->unique()
             ->values();
+    }
+
+    /**
+     * Drop the memoized lookups after a role change within the same request.
+     */
+    public function forgetPermissionCache(): void
+    {
+        $this->memoizedPermissionNames = null;
+        $this->memoizedRoleNames = null;
+        $this->memoizedAccessibleProjectIds = null;
     }
 
     public function hasPermission(string $permission): bool
@@ -142,11 +171,21 @@ class User extends Authenticatable
         $this->roles()->syncWithoutDetaching([
             $roleId => ['project_id' => $projectId],
         ]);
+
+        $this->forgetPermissionCache();
     }
 
     public function hasRole(string $roleName): bool
     {
-        return $this->roles()->where('name', $roleName)->exists();
+        return $this->roleNames()->contains($roleName);
+    }
+
+    /**
+     * @return Collection<int, string>
+     */
+    public function roleNames(): Collection
+    {
+        return $this->memoizedRoleNames ??= $this->roles()->pluck('name');
     }
 
     public function isAdmin(): bool
@@ -162,8 +201,15 @@ class User extends Authenticatable
      */
     public function accessibleProjectIds(): array
     {
+        if ($this->memoizedAccessibleProjectIds !== null) {
+            return $this->memoizedAccessibleProjectIds;
+        }
+
         if ($this->isAdmin() || $this->hasPortfolioFinanceAccess()) {
-            return Project::query()->pluck('id')->map(fn ($id) => (int) $id)->all();
+            return $this->memoizedAccessibleProjectIds = Project::query()
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
         }
 
         $teamIds = DB::table('project_user')
@@ -179,7 +225,7 @@ class User extends Authenticatable
             ->where('user_id', $this->id)
             ->pluck('project_id');
 
-        return $teamIds
+        return $this->memoizedAccessibleProjectIds = $teamIds
             ->merge($roleScopedIds)
             ->merge($ownedIds)
             ->unique()

@@ -261,7 +261,7 @@
                                     class="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-subtle sm:px-6"
                                 >
                                     <span class="min-w-0 flex-1 truncate font-mono text-sm text-ink">{{ $project->domain }}</span>
-                                    <span class="shrink-0 font-mono text-[10px] text-faint tabular-nums">{{ $project->openTasksCount() }} open</span>
+                                    <span class="shrink-0 font-mono text-[10px] text-faint tabular-nums">{{ $recentOpenTasks[$project->id] ?? 0 }} open</span>
                                     <x-badge size="sm" :tone="match ($project->status->value) {
                                         'monetized' => 'success',
                                         'paused', 'sold' => 'warn',

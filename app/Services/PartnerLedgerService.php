@@ -6,6 +6,7 @@ use App\Enums\PartnerLedgerType;
 use App\Models\PartnerLedgerEntry;
 use App\Models\PartnerProfile;
 use App\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -23,6 +24,36 @@ class PartnerLedgerService
             ->first();
 
         return (int) ($last?->balance_after_paisa ?? 0);
+    }
+
+    /**
+     * Closing balances for several partners in one query.
+     *
+     * The partners list asked each partner for their own balance, so the page
+     * cost a query per row.
+     *
+     * @param  array<int, int>  $userIds
+     * @return Collection<int, int>
+     */
+    public function balancesFor(array $userIds): Collection
+    {
+        if ($userIds === []) {
+            return collect();
+        }
+
+        $latestIds = PartnerLedgerEntry::query()
+            ->whereIn('user_id', $userIds)
+            ->groupBy('user_id')
+            ->selectRaw('MAX(id) as id')
+            ->pluck('id');
+
+        $balances = PartnerLedgerEntry::query()
+            ->whereIn('id', $latestIds)
+            ->pluck('balance_after_paisa', 'user_id');
+
+        return collect($userIds)->mapWithKeys(fn (int $id) => [
+            $id => (int) ($balances[$id] ?? 0),
+        ]);
     }
 
     /**

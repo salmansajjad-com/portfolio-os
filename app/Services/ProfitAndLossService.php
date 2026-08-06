@@ -78,24 +78,40 @@ class ProfitAndLossService
             'net_profit_paisa' => 0,
         ];
 
+        // Three grouped queries for the whole portfolio rather than three per
+        // project. The loop below only reads what they returned, so the query
+        // count no longer grows with the number of sites.
+        $ids = $projects->pluck('id')->all();
+
+        $revenueByProject = Revenue::query()
+            ->whereIn('project_id', $ids)
+            ->whereDate('period_month', '>=', $fromMonth)
+            ->whereDate('period_month', '<=', $toMonth)
+            ->groupBy('project_id')
+            ->selectRaw('project_id, SUM(amount_pkr_paisa) as total')
+            ->pluck('total', 'project_id');
+
+        $directByProject = Expense::query()
+            ->whereIn('project_id', $ids)
+            ->where('is_shared', false)
+            ->whereDate('expense_date', '>=', $from)
+            ->whereDate('expense_date', '<=', $to)
+            ->groupBy('project_id')
+            ->selectRaw('project_id, SUM(amount_paisa) as total')
+            ->pluck('total', 'project_id');
+
+        $sharedByProject = ExpenseAllocation::query()
+            ->whereIn('project_id', $ids)
+            ->whereDate('period_month', '>=', $fromMonth)
+            ->whereDate('period_month', '<=', $toMonth)
+            ->groupBy('project_id')
+            ->selectRaw('project_id, SUM(amount_paisa) as total')
+            ->pluck('total', 'project_id');
+
         foreach ($projects as $project) {
-            $revenue = (int) Revenue::query()
-                ->where('project_id', $project->id)
-                ->whereDate('period_month', '>=', $fromMonth)
-                ->whereDate('period_month', '<=', $toMonth)
-                ->sum('amount_pkr_paisa');
-
-            $direct = (int) Expense::query()
-                ->directForProject($project->id)
-                ->whereDate('expense_date', '>=', $from)
-                ->whereDate('expense_date', '<=', $to)
-                ->sum('amount_paisa');
-
-            $shared = (int) ExpenseAllocation::query()
-                ->where('project_id', $project->id)
-                ->whereDate('period_month', '>=', $fromMonth)
-                ->whereDate('period_month', '<=', $toMonth)
-                ->sum('amount_paisa');
+            $revenue = (int) ($revenueByProject[$project->id] ?? 0);
+            $direct = (int) ($directByProject[$project->id] ?? 0);
+            $shared = (int) ($sharedByProject[$project->id] ?? 0);
 
             $totalExpense = $direct + $shared;
             $net = $revenue - $totalExpense;

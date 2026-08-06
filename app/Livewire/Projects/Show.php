@@ -8,6 +8,7 @@ use App\Models\Credential;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\CredentialVaultService;
+use App\Services\ProjectMonthStatsService;
 use App\Services\ProjectOwnershipService;
 use App\Support\Money;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -437,7 +438,22 @@ class Show extends Component
             'statusOptions' => ProjectStatus::options(),
             'credentialTypes' => CredentialType::options(),
             'users' => User::query()->where('is_active', true)->orderBy('name')->get(),
-            'credentials' => $this->project->credentials()->orderBy('type')->orderBy('label')->get(),
+            // Hand each credential the project we already have. Policy checks
+            // reach for it, and without this every row fetches its own copy of
+            // the same parent.
+            'credentials' => $this->project->credentials()
+                ->orderBy('type')
+                ->orderBy('label')
+                ->get()
+                ->each(fn (Credential $credential) => $credential->setRelation('project', $this->project)),
+            'monthStats' => app(ProjectMonthStatsService::class)
+                ->forProjects([$this->project->id])
+                ->get($this->project->id, [
+                    'revenue_paisa' => 0,
+                    'cost_paisa' => 0,
+                    'profit_paisa' => 0,
+                    'open_tasks' => 0,
+                ]),
             // Passed to the view only, never held as component state.
             'revealed' => $this->revealedSecrets(),
         ]);
