@@ -14,6 +14,7 @@ use App\Support\Currency;
 use App\Support\Money;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -281,27 +282,32 @@ class ExpenseService
                         ->exists();
 
                     if (! $exists) {
-                        $expense = Expense::query()->create([
-                            'project_id' => $template->is_shared ? null : $template->project_id,
-                            'is_shared' => $template->is_shared,
-                            'expense_category_id' => $template->expense_category_id,
-                            'amount_paisa' => $template->amount_paisa,
-                            'currency' => $template->currency,
-                            'description' => $template->description,
-                            'expense_date' => $date,
-                            'source_type' => RecurringExpense::class,
-                            'source_id' => $template->id,
-                            'created_by' => $template->created_by,
-                            'recurring_expense_id' => $template->id,
-                            'is_paid' => false,
-                            'notes' => 'Auto-generated from recurring expense #'.$template->id,
-                        ]);
+                        try {
+                            $expense = Expense::query()->create([
+                                'project_id' => $template->is_shared ? null : $template->project_id,
+                                'is_shared' => $template->is_shared,
+                                'expense_category_id' => $template->expense_category_id,
+                                'amount_paisa' => $template->amount_paisa,
+                                'currency' => $template->currency,
+                                'description' => $template->description,
+                                'expense_date' => $date,
+                                'source_type' => RecurringExpense::class,
+                                'source_id' => $template->id,
+                                'created_by' => $template->created_by,
+                                'recurring_expense_id' => $template->id,
+                                'is_paid' => false,
+                                'notes' => 'Auto-generated from recurring expense #'.$template->id,
+                            ]);
 
-                        if ($expense->is_shared) {
-                            $this->allocations->allocateExpense($expense);
+                            if ($expense->is_shared) {
+                                $this->allocations->allocateExpense($expense);
+                            }
+
+                            $created++;
+                        } catch (UniqueConstraintViolationException) {
+                            // A parallel cron drip already generated this period.
+                            // Skip it and keep advancing the schedule.
                         }
-
-                        $created++;
                     }
 
                     $next = $template->next_run_date->copy()->addMonthNoOverflow();
@@ -366,20 +372,34 @@ class ExpenseService
             }
 
             $category = $this->ensureCategory($categorySlug, $categoryName);
+            $sourceKey = $source::class.':'.$source->getKey();
 
-            $expense = Expense::query()->create([
-                'project_id' => $projectId,
-                'is_shared' => false,
-                'expense_category_id' => $category->id,
-                'amount_paisa' => max(0, $amountPaisa),
-                'currency' => Currency::code(),
-                'description' => $description,
-                'expense_date' => $expenseDate,
-                'source_type' => $source::class,
-                'source_id' => $source->getKey(),
-                'created_by' => $actor->id,
-                'is_paid' => false,
-            ]);
+            try {
+                $expense = Expense::query()->create([
+                    'project_id' => $projectId,
+                    'is_shared' => false,
+                    'expense_category_id' => $category->id,
+                    'amount_paisa' => max(0, $amountPaisa),
+                    'currency' => Currency::code(),
+                    'description' => $description,
+                    'expense_date' => $expenseDate,
+                    'source_type' => $source::class,
+                    'source_id' => $source->getKey(),
+                    'source_key' => $sourceKey,
+                    'created_by' => $actor->id,
+                    'is_paid' => false,
+                ]);
+            } catch (UniqueConstraintViolationException) {
+                // Someone approved the same item at the same moment and their
+                // insert landed first. Adopt their row rather than double-charging.
+                $expense = Expense::query()->where('source_key', $sourceKey)->firstOrFail();
+
+                if (! $source->{$linkOnSource}) {
+                    $source->update([$linkOnSource => $expense->id]);
+                }
+
+                return $expense;
+            }
 
             $source->update([$linkOnSource => $expense->id]);
 

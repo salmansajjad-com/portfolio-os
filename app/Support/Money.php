@@ -159,6 +159,66 @@ class Money
         return intdiv($product + 5000, 10000);
     }
 
+    /**
+     * Split an amount across basis-point shares so the parts always sum back to it.
+     *
+     * Rounding each share independently with applyBps() can over- or under-pay:
+     * two 50% owners of 1 minor unit would each round to 1, paying out double.
+     * This floors every share and hands the leftover units to the largest
+     * fractional remainders (Hamilton apportionment), so nothing is created or lost.
+     *
+     * @param  array<array-key, int>  $bpsByKey  basis points keyed however the caller needs
+     * @return array<array-key, int> the same keys, mapped to minor units
+     */
+    public static function allocateBps(int $amount, array $bpsByKey): array
+    {
+        if ($bpsByKey === []) {
+            return [];
+        }
+
+        $totalBps = array_sum($bpsByKey);
+
+        if ($amount === 0 || $totalBps <= 0) {
+            return array_map(fn () => 0, $bpsByKey);
+        }
+
+        $shares = [];
+        $remainders = [];
+        $allocated = 0;
+
+        foreach ($bpsByKey as $key => $bps) {
+            $bps = max(0, $bps);
+            $product = $amount * $bps;
+            $shares[$key] = intdiv($product, $totalBps);
+            $remainders[$key] = $product % $totalBps;
+            $allocated += $shares[$key];
+        }
+
+        // Hand out what flooring left behind, largest remainder first. Ties go to
+        // the earlier key so the same inputs always produce the same split.
+        $leftover = $amount - $allocated;
+
+        if ($leftover > 0) {
+            $order = array_keys($remainders);
+            usort($order, function ($a, $b) use ($remainders, $bpsByKey) {
+                return $remainders[$b] <=> $remainders[$a]
+                    ?: $bpsByKey[$b] <=> $bpsByKey[$a]
+                    ?: array_search($a, array_keys($bpsByKey), true) <=> array_search($b, array_keys($bpsByKey), true);
+            });
+
+            foreach ($order as $key) {
+                if ($leftover <= 0) {
+                    break;
+                }
+
+                $shares[$key]++;
+                $leftover--;
+            }
+        }
+
+        return $shares;
+    }
+
     protected static function parseMinor(string|float|int $major, int $exponent): int
     {
         $normalized = static::normalize($major);

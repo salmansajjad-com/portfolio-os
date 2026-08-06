@@ -24,6 +24,7 @@ class Expense extends Model
         'expense_date',
         'source_type',
         'source_id',
+        'source_key',
         'created_by',
         'updated_by',
         'notes',
