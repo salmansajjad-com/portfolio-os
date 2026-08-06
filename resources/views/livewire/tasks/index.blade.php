@@ -196,11 +196,13 @@
                 @endforeach
             </x-select>
 
-            <x-select label="Assignee" wire:model="assigned_to" placeholder="Unassigned" :error="$errors->first('assigned_to')">
-                @foreach ($users as $user)
-                    <option value="{{ $user->id }}">{{ $user->name }}</option>
-                @endforeach
-            </x-select>
+            @if (auth()->user()->hasPermission('tasks.assign'))
+                <x-select label="Assignee" wire:model="assigned_to" placeholder="Unassigned" :error="$errors->first('assigned_to')">
+                    @foreach ($users as $user)
+                        <option value="{{ $user->id }}">{{ $user->name }}</option>
+                    @endforeach
+                </x-select>
+            @endif
 
             <x-input label="Due date" type="date" wire:model="due_date" :error="$errors->first('due_date')" />
 

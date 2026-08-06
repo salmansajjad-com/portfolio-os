@@ -64,11 +64,18 @@
             </div>
         </x-card>
 
-        <x-card title="Security scaffold" subtitle="Column scaffold exists on users; the full challenge flow is optional later." icon="credentials">
+        <x-card title="Two-factor authentication" subtitle="Not implemented yet — this records an intention, nothing more." icon="credentials">
+            <div class="mb-4 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-muted">
+                <span class="font-medium text-ink">No challenge screen exists.</span>
+                The database columns and this preference are in place, but sign-in does
+                <span class="font-medium">not</span> ask for a second factor. Turning this on
+                protects nothing today.
+            </div>
+
             <x-checkbox
                 wire:model="two_factor_required"
-                label="Require two-factor authentication"
-                hint="Off by default."
+                label="Require two-factor authentication once implemented"
+                hint="Stored as a preference for a future release."
             />
         </x-card>
 

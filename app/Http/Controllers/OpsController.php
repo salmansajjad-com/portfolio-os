@@ -17,6 +17,11 @@ class OpsController extends Controller
      *
      * @var list<string>
      */
+    /**
+     * Shortest token the route will accept before it refuses to run at all.
+     */
+    private const MIN_TOKEN_LENGTH = 32;
+
     private const ACTIONS = [
         'migrate',
         'storage-link',
@@ -33,7 +38,17 @@ class OpsController extends Controller
             throw new NotFoundHttpException;
         }
 
-        $provided = (string) $request->query('token', '');
+        // This endpoint runs migrations and writes to the filesystem, so a short
+        // token is not a smaller risk than no token — it is a guessable one.
+        // Refusing to start is safer than pretending the guard holds.
+        if (strlen($configured) < self::MIN_TOKEN_LENGTH) {
+            throw new NotFoundHttpException;
+        }
+
+        // Prefer the header: a token in the query string ends up in access logs,
+        // browser history and Referer headers. The query parameter stays
+        // supported because some hosts' file managers cannot send headers.
+        $provided = (string) ($request->bearerToken() ?: $request->query('token', ''));
 
         if ($provided === '' || ! hash_equals($configured, $provided)) {
             throw new AccessDeniedHttpException('Invalid ops token.');
@@ -119,111 +134,7 @@ class OpsController extends Controller
             $parts[] = trim(Artisan::output())." [{$cmd} exit={$exit}]";
         }
 
-        $parts[] = $this->runLoginAssetFix();
-
         return implode("\n", $parts)."\n";
-    }
-
-    /**
-     * Hostinger-safe login repair: rewrite layouts so Livewire boots from jsDelivr,
-     * and restore vendor/livewire/.../dist JS from GitHub when missing.
-     */
-    private function runLoginAssetFix(): string
-    {
-        $lines = ['login-asset-fix:'];
-
-        $guestPath = resource_path('views/layouts/guest.blade.php');
-        $guestHtml = <<<'BLADE'
-<!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $title ?? config('app.name', 'Portfolio OS') }}</title>
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
-    @livewireStyles
-</head>
-<body class="min-h-screen text-[15px] text-ink">
-    <div class="relative flex min-h-screen items-center justify-center px-4 py-12">
-        <div class="pointer-events-none absolute inset-0 overflow-hidden">
-            <div class="absolute -top-24 left-1/2 h-72 w-[36rem] -translate-x-1/2 rounded-full bg-accent/10 blur-3xl"></div>
-        </div>
-
-        <div class="relative w-full max-w-md">
-            <div class="mb-8 text-center">
-                <h1 class="text-2xl font-semibold tracking-tight text-ink">{{ config('app.name', 'Portfolio OS') }}</h1>
-                <p class="mt-2 font-mono text-[11px] font-medium tracking-[0.2em] text-muted uppercase">Portfolio OS</p>
-            </div>
-
-            <div class="rounded-2xl border border-line bg-surface/90 p-7 shadow-[0_20px_50px_-30px_rgba(20,23,31,0.35)] backdrop-blur">
-                {{ $slot }}
-            </div>
-        </div>
-    </div>
-    @livewireScriptConfig
-    <script type="module">
-        import { Livewire, Alpine } from 'https://cdn.jsdelivr.net/gh/livewire/livewire@v4.3.5/dist/livewire.esm.js';
-        window.Alpine = Alpine;
-        Livewire.start();
-    </script>
-</body>
-</html>
-
-BLADE;
-
-        // Only rebuild the guest layout when its Livewire boot is actually broken —
-        // otherwise this repair would overwrite the designed layout on every run.
-        $guestNeedsRepair = ! is_file($guestPath)
-            || ! str_contains((string) file_get_contents($guestPath), 'cdn.jsdelivr.net/gh/livewire');
-
-        if (! $guestNeedsRepair) {
-            $lines[] = 'guest.blade.php already boots Livewire from the CDN — left untouched';
-        } else {
-            try {
-                File::put($guestPath, $guestHtml);
-                $lines[] = 'wrote guest.blade.php path='.$guestPath.' bytes='.strlen($guestHtml);
-                $lines[] = 'guest_md5='.md5($guestHtml);
-            } catch (Throwable $e) {
-                $lines[] = 'guest write failed: '.$e->getMessage();
-            }
-        }
-
-        $appPath = resource_path('views/layouts/app.blade.php');
-        if (is_file($appPath)) {
-            $app = (string) file_get_contents($appPath);
-            if (! str_contains($app, 'cdn.jsdelivr.net/gh/livewire')) {
-                $snippet = <<<'SNIP'
-@livewireScriptConfig
-    <script type="module">
-        import { Livewire, Alpine } from 'https://cdn.jsdelivr.net/gh/livewire/livewire@v4.3.5/dist/livewire.esm.js';
-        window.Alpine = Alpine;
-        Livewire.start();
-    </script>
-SNIP;
-                if (str_contains($app, '@livewireScripts')) {
-                    $app = str_replace('@livewireScripts', $snippet, $app);
-                } elseif (str_contains($app, '@livewireScriptConfig')) {
-                    // already script-config only; append CDN boot after it
-                    $app = str_replace('@livewireScriptConfig', $snippet, $app);
-                } else {
-                    $app = rtrim($app)."\n".$snippet."\n";
-                }
-                File::put($appPath, $app);
-                $lines[] = 'patched app.blade.php for CDN Livewire';
-            } else {
-                $lines[] = 'app.blade.php already has CDN Livewire';
-            }
-        } else {
-            $lines[] = 'app.blade.php missing at '.$appPath;
-        }
-
-        Artisan::call('view:clear');
-        $lines[] = 'view:clear after layout write';
-
-        $lines[] = trim($this->runLivewireAssets());
-
-        return implode("\n", $lines);
     }
 
     private function runOptimize(): string

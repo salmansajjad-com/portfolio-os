@@ -167,6 +167,13 @@ class Index extends Component
             if ($task->type === TaskType::Setup && ! $isRecurring) {
                 $payload['type'] = TaskType::Setup;
             }
+
+            // Editing a task is not the same right as handing it to someone else.
+            // The form hides the field, but hiding a field is not authorisation.
+            if (! Auth::user()->can('assign', $task)) {
+                unset($payload['assigned_to']);
+            }
+
             $task->update($payload);
         } else {
             $payload['status'] = TaskStatus::Assigned;

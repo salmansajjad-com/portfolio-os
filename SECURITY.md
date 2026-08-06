@@ -37,9 +37,14 @@ GET /_ops/{migrate|storage-link|cache-clear|optimize|livewire-assets}?token=…
 Anyone with the token can run migrations and clear caches on your installation.
 
 - It is **disabled entirely (404) when `OPS_TOKEN` is empty.** That is the default in `.env.example`, and it should be the steady state.
-- Set `OPS_TOKEN` to 32+ random characters only for as long as a deploy needs it, then **clear or rotate it** and clear the config cache.
-- Only ever use it over **HTTPS**. Over plain HTTP the token is in the URL, in the clear, and in access logs.
+- A token shorter than **32 characters is refused** and the route 404s as though it were unset. A guessable token on an endpoint that runs migrations is not a smaller risk than no token.
+- Prefer the header form, which keeps the token out of access logs, browser history and `Referer`:
+  `curl -H "Authorization: Bearer $OPS_TOKEN" https://example.com/_ops/migrate`
+  The `?token=` form still works for hosts whose file manager cannot send headers.
+- Set `OPS_TOKEN` only for as long as a deploy needs it, then **clear or rotate it** and clear the config cache.
+- Only ever use it over **HTTPS**.
 - It is rate-limited per IP (`OPS_THROTTLE`, default 5/minute), which slows guessing but is not a substitute for a strong token.
+- The route cannot write application code. It runs a fixed list of Artisan commands and, for `livewire-assets`, restores four named vendor files from a hardcoded URL. It does **not** modify Blade templates.
 - Never commit a real token, and never leave one in a config cache you ship.
 
 If your host gives you SSH or a terminal, you do not need this route at all — leave `OPS_TOKEN` empty permanently.
@@ -52,6 +57,8 @@ Project credentials (hosting, CMS, registrar, ad network logins) are stored encr
 - **Rotating `APP_KEY` makes every existing vault row permanently unreadable.** There is no re-encryption command. Export what you need first.
 - A database dump alone does not expose secrets, but a database dump *plus* your `.env` does. Store backups accordingly.
 - Every reveal of a secret is written to an audit log with the user, timestamp and IP. Reveals are a permission (`credentials.reveal`) separate from viewing that a credential exists.
+- A revealed secret is held in the **server-side session**, never in Livewire component state. Livewire serialises public properties into `wire:snapshot` and sends them to the browser on every request, so a revealed secret kept there would sit in the page source long after the reveal. Leaving the page re-masks everything.
+- Partner payout details are encrypted with the same mechanism as vault secrets.
 
 ### AI provider boundary
 
@@ -65,3 +72,5 @@ With no `AI_API_KEY` set, no outbound call is ever made. If you would rather not
 - `APP_DEBUG=false` in production, always. Laravel's debug page discloses environment variables.
 - The demo seeders create accounts with a known password when `APP_ENV=local`. Never run them on a real installation.
 - Uploaded receipts and attachments live on the private disk by default. Only files under `storage/app/public` are web-reachable.
+- CSV exports escape values that a spreadsheet would otherwise execute as a formula.
+- **Two-factor authentication is not implemented.** The user table has columns for it and Settings has a preference toggle, but there is no enrollment step and sign-in does not issue a challenge. Do not count it as a control.

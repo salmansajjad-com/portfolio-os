@@ -76,8 +76,30 @@ class Show extends Component
 
     public string $cred_metadata_json = '';
 
-    /** Revealed secrets keyed by credential id (session-local only). */
-    public array $revealed = [];
+    /**
+     * Revealed secrets deliberately live in the server-side session rather than
+     * in a public property. Livewire serialises public state into wire:snapshot
+     * and posts it back to the browser on every request, so a public $revealed
+     * array would leave decrypted vault material sitting in the page source
+     * long after the reveal — readable by anything with DOM access.
+     */
+    protected function revealedSessionKey(): string
+    {
+        return 'vault.revealed.'.$this->project->id;
+    }
+
+    /** @return array<int, array{username: ?string, secret: ?string, metadata: array}> */
+    protected function revealedSecrets(): array
+    {
+        return session()->get($this->revealedSessionKey(), []);
+    }
+
+    protected function forgetRevealed(int $credentialId): void
+    {
+        $revealed = $this->revealedSecrets();
+        unset($revealed[$credentialId]);
+        session()->put($this->revealedSessionKey(), $revealed);
+    }
 
     // Files
     public $upload;
@@ -86,6 +108,11 @@ class Show extends Component
     {
         $this->authorize('view', $project);
         $this->project = $project->load(['owners', 'teamMembers', 'credentials', 'media']);
+
+        // Every page load starts masked, so a reveal cannot outlive the visit
+        // that authorised and audited it.
+        session()->forget($this->revealedSessionKey());
+
         $this->fillFromProject();
     }
 
@@ -316,7 +343,7 @@ class Show extends Component
                 $payload['secret'] = $validated['cred_secret'];
             }
             $credential->update($payload);
-            unset($this->revealed[$credential->id]);
+            $this->forgetRevealed($credential->id);
             $this->dispatch('toast', message: 'Credential updated.', tone: 'success');
         }
 
@@ -330,7 +357,7 @@ class Show extends Component
         $credential = $this->project->credentials()->findOrFail($credentialId);
         $this->authorize('delete', $credential);
         $credential->delete();
-        unset($this->revealed[$credentialId]);
+        $this->forgetRevealed($credentialId);
         $this->project->load('credentials');
         $this->dispatch('toast', message: 'Credential removed.', tone: 'success');
     }
@@ -340,13 +367,15 @@ class Show extends Component
         $credential = $this->project->credentials()->findOrFail($credentialId);
         $this->authorize('reveal', $credential);
 
-        $data = $vault->reveal($credential, Auth::user(), request());
-        $this->revealed[$credentialId] = $data;
+        $revealed = $this->revealedSecrets();
+        $revealed[$credentialId] = $vault->reveal($credential, Auth::user(), request());
+
+        session()->put($this->revealedSessionKey(), $revealed);
     }
 
     public function hideCredential(int $credentialId): void
     {
-        unset($this->revealed[$credentialId]);
+        $this->forgetRevealed($credentialId);
     }
 
     public function cancelCredentialForm(): void
@@ -373,7 +402,7 @@ class Show extends Component
         $this->authorize('update', $this->project);
 
         $this->validate([
-            'upload' => ['required', 'file', 'max:10240'],
+            'upload' => ['required', 'file', 'max:10240', 'mimes:pdf,png,jpg,jpeg,gif,webp,txt,csv,doc,docx,xls,xlsx,zip'],
         ]);
 
         $path = $this->upload->store('project-files/'.$this->project->id, 'local');
@@ -409,6 +438,8 @@ class Show extends Component
             'credentialTypes' => CredentialType::options(),
             'users' => User::query()->where('is_active', true)->orderBy('name')->get(),
             'credentials' => $this->project->credentials()->orderBy('type')->orderBy('label')->get(),
+            // Passed to the view only, never held as component state.
+            'revealed' => $this->revealedSecrets(),
         ]);
     }
 }

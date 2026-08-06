@@ -17,7 +17,9 @@ There is **no Node**, Redis, Docker, or SSH requirement on the server. PHP 8.3+ 
 
 `GET /_ops/{action}?token=…` can run **migrate**, **storage-link**, **cache-clear**, and **optimize** without SSH.
 
-- Set a long random `OPS_TOKEN` only while you need it.
+- Set a long random `OPS_TOKEN` only while you need it. **Tokens under 32 characters are refused** and the route 404s.
+- Prefer the header form so the token stays out of access logs and history:
+  `curl -H "Authorization: Bearer $OPS_TOKEN" https://YOUR_DOMAIN/_ops/migrate`
 - Prefer **HTTPS** and a hard-to-guess token (32+ random chars).
 - **Rotate / clear `OPS_TOKEN` after successful first deploy** (or at least after migrations).
 - Leaving `OPS_TOKEN` empty disables the route entirely (404).

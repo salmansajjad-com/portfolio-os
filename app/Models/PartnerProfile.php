@@ -15,10 +15,20 @@ class PartnerProfile extends Model
         'is_active',
     ];
 
+    /**
+     * Payout details hold bank and wallet identifiers, so they get the same
+     * encryption as the credential vault rather than sitting readable in a
+     * database backup.
+     */
+    protected $hidden = [
+        'payout_details',
+    ];
+
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
+            'payout_details' => 'encrypted',
         ];
     }
 

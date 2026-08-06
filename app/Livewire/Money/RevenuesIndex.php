@@ -88,7 +88,7 @@ class RevenuesIndex extends Component
     public function edit(int $id): void
     {
         abort_unless(FinancePolicy::manageRevenue(Auth::user()), 403);
-        $row = Revenue::query()->findOrFail($id);
+        $row = Revenue::query()->accessibleBy(Auth::user())->findOrFail($id);
         $this->editingId = $row->id;
         $this->project_id = (string) $row->project_id;
         $this->period_month = $row->period_month->format('Y-m');
@@ -122,7 +122,7 @@ class RevenuesIndex extends Component
         ];
 
         if ($this->editingId) {
-            $revenues->update(Revenue::query()->findOrFail($this->editingId), $payload, Auth::user());
+            $revenues->update(Revenue::query()->accessibleBy(Auth::user())->findOrFail($this->editingId), $payload, Auth::user());
             $this->dispatch('toast', message: 'Revenue updated (FX locked on record).', tone: 'success');
         } else {
             $revenues->create($payload, Auth::user());
@@ -136,7 +136,7 @@ class RevenuesIndex extends Component
     public function delete(int $id, RevenueService $revenues): void
     {
         abort_unless(FinancePolicy::manageRevenue(Auth::user()), 403);
-        $revenues->softDelete(Revenue::query()->findOrFail($id), Auth::user());
+        $revenues->softDelete(Revenue::query()->accessibleBy(Auth::user())->findOrFail($id), Auth::user());
         $this->dispatch('toast', message: 'Revenue soft-deleted.', tone: 'success');
     }
 

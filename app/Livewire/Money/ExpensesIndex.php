@@ -104,7 +104,7 @@ class ExpensesIndex extends Component
     public function edit(int $id): void
     {
         abort_unless(FinancePolicy::manageExpenses(Auth::user()), 403);
-        $e = Expense::query()->findOrFail($id);
+        $e = Expense::query()->accessibleBy(Auth::user())->findOrFail($id);
         $this->editingId = $e->id;
         $this->project_id = (string) ($e->project_id ?? '');
         $this->is_shared = (bool) $e->is_shared;
@@ -130,7 +130,7 @@ class ExpensesIndex extends Component
             'expense_date' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'is_paid' => ['boolean'],
-            'receipt' => ['nullable', 'file', 'max:5120'],
+            'receipt' => ['nullable', 'file', 'max:5120', 'mimes:pdf,png,jpg,jpeg,gif,webp'],
         ]);
 
         $data = [
@@ -145,7 +145,7 @@ class ExpensesIndex extends Component
         ];
 
         if ($this->editingId) {
-            $expenses->updateManual(Expense::query()->findOrFail($this->editingId), $data, Auth::user(), $this->receipt);
+            $expenses->updateManual(Expense::query()->accessibleBy(Auth::user())->findOrFail($this->editingId), $data, Auth::user(), $this->receipt);
             $this->dispatch('toast', message: 'Expense updated.', tone: 'success');
         } else {
             $expenses->createManual($data, Auth::user(), $this->receipt);
@@ -160,7 +160,7 @@ class ExpensesIndex extends Component
     public function delete(int $id, ExpenseService $expenses): void
     {
         abort_unless(FinancePolicy::manageExpenses(Auth::user()), 403);
-        $expenses->softDelete(Expense::query()->findOrFail($id), Auth::user());
+        $expenses->softDelete(Expense::query()->accessibleBy(Auth::user())->findOrFail($id), Auth::user());
         $this->dispatch('toast', message: 'Expense soft-deleted.', tone: 'success');
     }
 
